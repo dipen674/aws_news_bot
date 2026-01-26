@@ -2,203 +2,131 @@ import boto3
 import json
 import os
 import urllib.request
-import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
 import html
-import random
+import time
 
-# Initialize clients
 dynamodb = boto3.resource('dynamodb')
 TABLE_NAME = os.environ['TABLE_NAME']
 DISCORD_WEBHOOK_URL = os.environ['DISCORD_WEBHOOK_URL']
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 RSS_URL = "https://aws.amazon.com/about-aws/whats-new/recent/feed/"
+AI_MODEL = "llama-3.3-70b-versatile"
 
 def lambda_handler(event, context):
-    print("Fetching AWS RSS Feed with AI Analysis...")
-    
-    # 1. Fetch RSS Feed
     try:
         with urllib.request.urlopen(RSS_URL, timeout=10) as response:
             rss_data = response.read()
     except Exception as e:
-        print(f"Error fetching RSS: {e}")
+        print(f"RSS Error: {e}")
         return
         
     root = ET.fromstring(rss_data)
     items = root.findall(".//item")
     
-    processed_count = 0
+    processed = 0
     table = dynamodb.Table(TABLE_NAME)
     
-    # Limit to 3 new items at a time to stay within quotas
     for item in items:
-        if processed_count >= 3: break
+        if processed >= 3: break
         
         title = item.find("title").text
         link = item.find("link").text
         guid = item.find("guid").text
-        raw_description = item.find("description").text
+        desc = clean_text(item.find("description").text)
         
-        # Clean the description
-        description = clean_text(raw_description)
+        # Dup check is fine to keep, but for testing you might want to skip it
+        # dup = table.get_item(Key={'article_id': guid})
+        # if 'Item' in dup: continue
+            
+        print(f"Analyzing news item with Senior AI: {title}")
+        ai = query_groq(title, desc)
         
-        # 2. Deduplication check
-        dup_check = table.get_item(Key={'article_id': guid})
-        if 'Item' in dup_check:
-            print(f"Skipping existing: {title}")
+        if not ai:
+            print("Groq failed to analyze news item")
             continue
             
-        print(f"Analyzing new announcement: {title}")
+        send_to_discord(title, desc, ai, link)
         
-        # 3. Get AI Analysis
-        ai_analysis = query_gemini_for_news(title, description)
+        table.put_item(Item={'article_id': guid, 'processed_at': str(datetime.now()), 'title': title})
+        processed += 1
+        time.sleep(3)
         
-        # 4. Send to Discord
-        send_to_discord(title, description, ai_analysis, link)
-        
-        # 5. Save to DynamoDB
-        table.put_item(
-            Item={
-                'article_id': guid,
-                'processed_at': str(datetime.now()),
-                'title': title
-            }
-        )
-        processed_count += 1
-        
-        # Intentional pacing to stay under 15 RPM
-        if processed_count < 3:
-            import time
-            time.sleep(5)
-        
-    return {
-        'statusCode': 200,
-        'body': json.dumps(f'Processed {processed_count} news articles with AI.')
-    }
+    return {'statusCode': 200, 'body': json.dumps(f'Processed {processed} news')}
 
 def clean_text(text):
     if not text: return ""
     text = html.unescape(text)
     text = re.sub(r'<[^>]+>', '', text)
-    text = re.sub(r'\n\s*\n', '\n\n', text).strip()
-    return text
+    return re.sub(r'\n\s*\n', '\n', text).strip()
 
-def query_gemini_for_news(title, content):
-    """Summarizes AWS news with a friendly, simple DevOps focus"""
-    if not GEMINI_API_KEY:
-        return None
+def query_groq(title, content):
+    prompt = f"""You are a witty Senior Architect / Storyteller. 
+Explain this AWS News like a refreshing, funny epic. 
+I want to laugh, but I also want EVERY technical detail (specific names, versions, domains, regions).
 
-    prompt = f"""
-    You are a friendly Senior DevOps Architect. 
-    Explain this new AWS announcement in VERY SIMPLE, friendly English. 
-    Imagine you are chatting with a junior dev who is a bit overwhelmed.
+TITLE: {title}
+CONTENT: {content[:5000]}
 
-    TITLE: {title}
-    CONTENT: {content[:8000]}
-    
-    RESPONSE FORMAT (STRICT JSON ONLY):
-    {{
-        "friendly_summary": "A 2-3 sentence very simple and exciting explanation of what this news is.",
-        "devops_impact": "How this actually makes our lives easier as engineers.",
-        "key_takeaway": "The one technical 'pro-tip' to remember.",
-        "worth_it": "Yes/No/Maybe + a simple reason (max 5 words)."
-    }}
-    """
+Respond ONLY with valid JSON (no markdown):
+{{
+  "friendly_summary": "The Epic Tale: A funny, informative story of what happened in this update. MUST include all technical details (like specific list of domains/numbers) mentioned in the content.",
+  "devops_impact": "The Technical Plot Twist: How this suddenly changes our engineering lives (SRE/Cost/Setup) in a witty way.",
+  "real_use_case": "The Quest: A funny, practical scenario where we use this hero tomorrow morning.",
+  "key_takeaway": "The Ancient Wisdom: The #1 architectural secret or 'gotcha' to remember."
+}}"""
 
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.4}
+        "model": AI_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a funny technical storyteller. Respond ONLY in valid JSON."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1200
     }
-    
-    max_retries = 5
-    for attempt in range(max_retries + 1):
-        try:
-            req = urllib.request.Request(api_url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                raw_text = result['candidates'][0]['content']['parts'][0]['text']
-                
-                json_text = raw_text.strip()
-                if json_text.startswith("```"):
-                    json_text = re.sub(r'^```(?:json)?\n?|\n?```$', '', json_text, flags=re.MULTILINE)
-                
-                return json.loads(json_text)
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                print(f"News AI Rate Limit (429). Attempt {attempt + 1}. Waiting 15s...")
-                import time
-                time.sleep(15)
-                if attempt == max_retries: raise
-            else:
-                raise
-        except Exception as e:
-            print(f"AI News Analysis Attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries:
-                import time
-                time.sleep(3)
-            else:
-                raise
-    return None
-
-def send_to_discord(title, full_description, ai_analysis, link):
-    embed_fields = []
-    
-    # Use AI summary for the main description if available
-    final_description = ""
-    if ai_analysis and ai_analysis.get('friendly_summary'):
-        final_description = ai_analysis['friendly_summary']
-    else:
-        # Fallback to truncated RSS desc only if AI fails
-        final_description = full_description[:300] + "..."
-
-    # 🧠 AI Insight Fields with improved vertical spacing
-    if ai_analysis:
-        embed_fields.append({
-            "name": "\n⚙️ DevOps Impact",
-            "value": f"{ai_analysis.get('devops_impact', 'N/A')}\n\u200b",
-            "inline": False
-        })
-        embed_fields.append({
-            "name": "💡 Key Takeaway",
-            "value": f"{ai_analysis.get('key_takeaway', 'N/A')}\n\u200b",
-            "inline": False
-        })
-        embed_fields.append({
-            "name": "🚀 Deployment Recommendation",
-            "value": f"{ai_analysis.get('worth_it', 'N/A')}\n\u200b",
-            "inline": False
-        })
-    
-    payload = {
-        "username": "AWS Tech Curator",
-        "avatar_url": "https://cdn-icons-png.flaticon.com/512/10061/10061805.png",
-        "embeds": [
-            {
-                "title": title[:256],
-                "description": f"{final_description}\n\n[📖 Read Official Documentation]({link})",
-                "url": link,
-                "color": 16753920, # AWS Orange
-                "fields": embed_fields,
-                "footer": {
-                    "text": "Automated AI Briefing • " + datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-                }
-            }
-        ]
-    }
-    
-    req = urllib.request.Request(
-        DISCORD_WEBHOOK_URL, 
-        data=json.dumps(payload).encode('utf-8'),
-        headers={'Content-Type': 'application/json', 'User-Agent': 'AWSNewsCuratorAI/1.0'}
-    )
     
     try:
-        with urllib.request.urlopen(req) as response:
-            print(f"News posted to Discord: {response.getcode()}")
+        req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(payload).encode('utf-8'),
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json", "User-Agent": "AWS-News-Bot/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            raw = result['choices'][0]['message']['content'].strip()
+            if '```' in raw:
+                match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
+                if match: raw = match.group(1)
+            return json.loads(raw)
     except Exception as e:
-        print(f"Discord Error: {e}")
+        print(f"Groq API Error: {e}")
+        return None
+
+def send_to_discord(title, desc, ai, link):
+    fields = []
+    final_desc = ai.get('friendly_summary') if ai else desc[:500] + "..."
+
+    if ai:
+        fields.append({"name": "\n\n🎭  The Technical Plot Twist", "value": f"{ai.get('devops_impact', 'N/A')}\n\u200b", "inline": False})
+        fields.append({"name": "\n\n🎯  The Practical Quest", "value": f"{ai.get('real_use_case', 'N/A')}\n\u200b", "inline": False})
+        fields.append({"name": "\n\n💡  The Ancient Wisdom", "value": f"{ai.get('key_takeaway', 'N/A')}\n\u200b", "inline": False})
+    
+    payload = {
+        "username": "AWS Storyteller",
+        "avatar_url": "https://cdn-icons-png.flaticon.com/512/10061/10061805.png",
+        "embeds": [{
+            "title": f"📜 {title[:250]}",
+            "description": f"{final_desc}\n\n[📖 Read The Sacred Texts]({link})",
+            "url": link,
+            "color": 16753920,
+            "fields": fields,
+            "footer": {"text": "A Refreshing Technical Tale • " + datetime.utcnow().strftime("%Y-%m-%d")}
+        }]
+    }
+    
+    req = urllib.request.Request(DISCORD_WEBHOOK_URL, data=json.dumps(payload).encode('utf-8'),
+                                 headers={'Content-Type': 'application/json', 'User-Agent': 'AWS-News-Bot/1.0'})
+    with urllib.request.urlopen(req):
+        print("Posted to Discord")

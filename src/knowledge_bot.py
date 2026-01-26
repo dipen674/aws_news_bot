@@ -2,289 +2,143 @@ import json
 import os
 import urllib.request
 import re
-import html as html_lib
 import random
 from datetime import datetime
 
-# --- Configuration ---
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+AI_MODEL = "llama-3.3-70b-versatile"
 
 # Massive AWS Services List
 SERVICES = {
-    "EC2": "https://aws.amazon.com/ec2/",
-    "Lambda": "https://aws.amazon.com/lambda/",
-    "S3": "https://aws.amazon.com/s3/",
-    "RDS": "https://aws.amazon.com/rds/",
-    "DynamoDB": "https://aws.amazon.com/dynamodb/",
-    "API Gateway": "https://aws.amazon.com/api-gateway/",
-    "VPC": "https://aws.amazon.com/vpc/",
-    "CloudFront": "https://aws.amazon.com/cloudfront/",
-    "IAM": "https://aws.amazon.com/iam/",
-    "CloudWatch": "https://aws.amazon.com/cloudwatch/",
-    "ECS": "https://aws.amazon.com/ecs/",
-    "EKS": "https://aws.amazon.com/eks/",
-    "Route 53": "https://aws.amazon.com/route53/",
-    "SNS": "https://aws.amazon.com/sns/",
-    "SQS": "https://aws.amazon.com/sqs/",
-    "CloudFormation": "https://aws.amazon.com/cloudformation/",
-    "Elastic Beanstalk": "https://aws.amazon.com/elasticbeanstalk/",
-    "Step Functions": "https://aws.amazon.com/step-functions/",
-    "Kinesis": "https://aws.amazon.com/kinesis/",
-    "Athena": "https://aws.amazon.com/athena/",
-    "Glue": "https://aws.amazon.com/glue/",
-    "Redshift": "https://aws.amazon.com/redshift/",
-    "Aurora": "https://aws.amazon.com/rds/aurora/",
-    "SageMaker": "https://aws.amazon.com/sagemaker/",
-    "Bedrock": "https://aws.amazon.com/bedrock/",
-    "Cognito": "https://aws.amazon.com/cognito/",
-    "Secrets Manager": "https://aws.amazon.com/secrets-manager/",
-    "KMS": "https://aws.amazon.com/kms/",
-    "WAF": "https://aws.amazon.com/waf/",
-    "CloudTrail": "https://aws.amazon.com/cloudtrail/",
-    "Config": "https://aws.amazon.com/config/",
-    "Systems Manager": "https://aws.amazon.com/systems-manager/",
-    "EventBridge": "https://aws.amazon.com/eventbridge/",
-    "Amplify": "https://aws.amazon.com/amplify/",
-    "AppSync": "https://aws.amazon.com/appsync/",
-    "Direct Connect": "https://aws.amazon.com/directconnect/",
-    "Global Accelerator": "https://aws.amazon.com/global-accelerator/",
-    "Backup": "https://aws.amazon.com/backup/",
-    "DataSync": "https://aws.amazon.com/datasync/",
-    "Snowball": "https://aws.amazon.com/snowball/",
-    "Inspector": "https://aws.amazon.com/inspector/",
-    "GuardDuty": "https://aws.amazon.com/guardduty/",
-    "Macie": "https://aws.amazon.com/macie/",
-    "Security Hub": "https://aws.amazon.com/security-hub/",
-    "EFS": "https://aws.amazon.com/efs/",
-    "FSx": "https://aws.amazon.com/fsx/",
-    "QuickSight": "https://aws.amazon.com/quicksight/",
-    "EMR": "https://aws.amazon.com/emr/",
-    "OpenSearch": "https://aws.amazon.com/opensearch-service/",
-    "MSK": "https://aws.amazon.com/msk/",
-    "Neptune": "https://aws.amazon.com/neptune/",
-    "DocumentDB": "https://aws.amazon.com/documentdb/",
-    "QLDB": "https://aws.amazon.com/qldb/",
-    "IoT Core": "https://aws.amazon.com/iot-core/",
-    "Cost Explorer": "https://aws.amazon.com/aws-cost-management/aws-cost-explorer/"
+    # Core Infrastructure
+    "EC2": "https://aws.amazon.com/ec2/", "Lambda": "https://aws.amazon.com/lambda/",
+    "S3": "https://aws.amazon.com/s3/", "RDS": "https://aws.amazon.com/rds/",
+    "DynamoDB": "https://aws.amazon.com/dynamodb/", "VPC": "https://aws.amazon.com/vpc/",
+    "Route 53": "https://aws.amazon.com/route53/", "IAM": "https://aws.amazon.com/iam/",
+    # Containers & Serverless
+    "ECS": "https://aws.amazon.com/ecs/", "EKS": "https://aws.amazon.com/eks/",
+    "Fargate": "https://aws.amazon.com/fargate/", "App Runner": "https://aws.amazon.com/apprunner/",
+    # Data & Analytics
+    "Athena": "https://aws.amazon.com/athena/", "Redshift": "https://aws.amazon.com/redshift/",
+    "Glue": "https://aws.amazon.com/glue/", "Lake Formation": "https://aws.amazon.com/lake-formation/",
+    "OpenSearch": "https://aws.amazon.com/opensearch-service/", "EMR": "https://aws.amazon.com/emr/",
+    # AI & ML
+    "SageMaker": "https://aws.amazon.com/sagemaker/", "Bedrock": "https://aws.amazon.com/bedrock/",
+    # Integration & Messaging
+    "SQS": "https://aws.amazon.com/sqs/", "SNS": "https://aws.amazon.com/sns/",
+    "EventBridge": "https://aws.amazon.com/eventbridge/", "Step Functions": "https://aws.amazon.com/step-functions/",
+    # Networking & Content Delivery
+    "CloudFront": "https://aws.amazon.com/cloudfront/", "API Gateway": "https://aws.amazon.com/api-gateway/",
+    "App Mesh": "https://aws.amazon.com/app-mesh/", "Global Accelerator": "https://aws.amazon.com/global-accelerator/",
+    # Security
+    "WAF": "https://aws.amazon.com/waf/", "KMS": "https://aws.amazon.com/kms/",
+    "Secrets Manager": "https://aws.amazon.com/secrets-manager/", "Security Hub": "https://aws.amazon.com/security-hub/",
+    "Macie": "https://aws.amazon.com/macie/", "Inspector": "https://aws.amazon.com/inspector/",
+    # Developer Tools
+    "CloudFormation": "https://aws.amazon.com/cloudformation/", "CloudWatch": "https://aws.amazon.com/cloudwatch/",
+    "CloudShell": "https://aws.amazon.com/cloudshell/", "Proton": "https://aws.amazon.com/proton/",
+    # Specialized
+    "Connect": "https://aws.amazon.com/connect/", "Chime": "https://aws.amazon.com/chime/",
+    "Braket": "https://aws.amazon.com/braket/", "Marketplace": "https://aws.amazon.com/marketplace/"
 }
 
 def lambda_handler(event, context):
-    print("Starting AI-Powered Knowledge Bot...")
-    
-    # 1. Select a Service
-    target_service = event.get('service')
-    available_services = list(SERVICES.keys())
-    
-    if not target_service:
-        target_service = random.choice(available_services)
-        print(f"Selected random service: {target_service}")
-    else:
-        # Case insensitive lookup
-        for s in available_services:
-            if s.lower() == target_service.lower():
-                target_service = s
-                break
+    service = event.get('service') or random.choice(list(SERVICES.keys()))
+    for s in SERVICES.keys():
+        if s.lower() == service.lower():
+            service = s
+            break
 
-    url = SERVICES.get(target_service)
-    if not url:
-        return {'statusCode': 404, 'body': json.dumps("Service not found")}
+    url = SERVICES.get(service)
+    if not url: return {'statusCode': 404, 'body': json.dumps("Service not found")}
 
-    print(f"Scraping: {url}")
-
-    # 2. Scrape and Clean HTML
     try:
-        html_content = fetch_html(url)
-        clean_text_content = clean_html_to_text(html_content)
+        print(f"Generating Catchy Masterclass for {service}...")
+        ai_data = query_groq_direct(service)
+        if not ai_data: raise Exception("Groq failure")
+        send_to_discord(service, url, ai_data)
+        return {'statusCode': 200, 'body': json.dumps(f"Posted {service}")}
     except Exception as e:
-        print(f"Scraping Error: {e}")
-        return {'statusCode': 500, 'body': json.dumps("Failed to scrape")}
+        print(f"CRITICAL ERROR: {e}")
+        return {'statusCode': 500, 'body': json.dumps(str(e))}
 
-    # 3. Get AI Analysis from Gemini
-    try:
-        ai_data = query_gemini(target_service, clean_text_content)
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Gemini AI Error: {error_msg}")
-        # Fallback to a basic card but include the ERROR MESSAGE so the user can see it
-        ai_data = {
-            "description": f"❌ **AI Synthesis Error**: {error_msg}\n\nPlease check the official documentation for now.",
-            "features": ["Error occurred during AI generation"],
-            "use_cases": ["Check Lambda logs for full trace"],
-            "comparison": f"Technical Details: {error_msg[:100]}"
-        }
+def query_groq_direct(service_name):
+    prompt = f"""You are a legendary Technical Bard. 
+Your goal is to tell the EPIC and FUNNY story of AWS {service_name}. 
+Make my mood refreshed, make me laugh, but teach me like a Senior Architect.
 
-    # 4. Send to Discord
-    send_knowledge_card(target_service, url, ai_data)
+RULES:
+- Use a storytelling format for every section.
+- Be funny, witty, and slightly dramatic.
+- DO NOT lose the technical depth. Mention internal mechanics.
+- Comparison: Name Azure [Service] and GCP [Service] as rival kingdoms/characters.
 
-    return {
-        'statusCode': 200,
-        'body': json.dumps(f"AI Knowledge posted for {target_service}")
-    }
+Respond ONLY with valid JSON (no markdown):
+{{
+  "description": "The Origin Story: A funny, high-energy tale of why this service was born and what it does. (Max 4 lines)",
+  "features": ["The Hero's Toolkit 1: [Technical feature explained as a superpower]", "Superpower 2", "Superpower 3"],
+  "devops_crucials": ["The Bard's Secret: [Funny but critical production advice]", "Secret 2", "Secret 3"],
+  "use_cases": ["The Quest 1: [Real-world scenario told as a short funny quest]", "Quest 2", "Quest 3"],
+  "comparison": "The Rivalry Saga: A witty technical battle between {service_name} and its Azure/GCP rivals. Name the services and explain why AWS wins (or doesn't)."
+}}"""
 
-def fetch_html(url):
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=15) as response:
-        return response.read().decode('utf-8', errors='ignore')
-
-def clean_html_to_text(html_content):
-    """Strip HTML tags and boilerplate to save tokens"""
-    # Remove scripts and styles
-    text = re.sub(r'<(script|style|nav|header|footer)[^>]*>.*?</\1>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-    # Remove all other tags
-    text = re.sub(r'<[^>]+>', ' ', text)
-    # Clean up whitespace and entities
-    text = html_lib.unescape(text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text[:20000] # Limit to 20k chars to stay safe on context limits
-
-def query_gemini(service_name, content):
-    """Calls Gemini Pro API with safety settings and retry logic"""
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "PASTE_YOUR_GEMINI_API_KEY_HERE":
-        raise ValueError("Gemini API Key is missing or not configured.")
-
-    prompt = f"""
-    You are a friendly Senior AWS Architect who loves mentoring beginners.
-    Explain AWS {service_name} in SIMPLE, everyday English. 
-    Imagine you are explaining this to a friend who knows basic IT but is new to the cloud.
-
-    GUIDELINES:
-    - Use VERY SIMPLE English. Avoid "corporate speak" or high-level jargon.
-    - Be friendly and welcoming, but keep the technical "meat."
-    - Use short sentences and punchy bullet points.
-    - For "Why it matters," give a real-life analogy (like a warehouse, a post office, etc).
-
-    RESPONSE FORMAT (STRICT JSON ONLY):
-    {{
-        "description": "A very simple intro (2 sentences). Followed by 3 bold 'Why it's cool' points with emojis.",
-        "features": ["Feature name: [Super simple 1-sentence explanation]", "..."],
-        "devops_crucials": ["Pro-tip 1: [Simple advice]", "Pro-tip 2: [Simple advice]", "..."],
-        "use_cases": ["Case 1: [Simple example]", "Case 2: [Simple example]", "..."],
-        "comparison": "Friendly comparison: 'AWS [Service] is like [X], while Azure/GCP is like [Y]. Pick this one if you want [Z].'"
-    }}
-
-    CONTENT TO ANALYZE:
-    {content[:15000]}
-    """
-
-    # In 2026, we use gemini-2.5-flash as the standard stable model
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        "model": AI_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a fun mentor who simplifies cloud. ONLY JSON."},
+            {"role": "user", "content": prompt}
         ],
-        "generationConfig": {
-            "response_mime_type": "application/json",
-            "temperature": 0.3
-        }
+        "temperature": 0.3,
+        "max_tokens": 1000
     }
     
-    max_retries = 3
-    for attempt in range(max_retries + 1):
-        try:
-            req = urllib.request.Request(
-                api_url, 
-                data=json.dumps(payload).encode('utf-8'),
-                headers={'Content-Type': 'application/json'}
-            )
-            
-            with urllib.request.urlopen(req, timeout=30) as response:
-                res_body = response.read().decode('utf-8')
-                result = json.loads(res_body)
-                
-                if 'candidates' not in result or not result['candidates']:
-                    raise Exception("AI returned no results (safety block or empty response)")
+    try:
+        req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(payload).encode('utf-8'),
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json", "User-Agent": "AWS-Architect-Bot/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=40) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            raw = result['choices'][0]['message']['content'].strip()
+            if '```' in raw:
+                match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
+                if match: raw = match.group(1)
+            return json.loads(raw)
+    except Exception as e:
+        print(f"Groq API Error: {e}")
+        return None
 
-                candidate = result['candidates'][0]
-                raw_ai_text = candidate['content']['parts'][0]['text']
-                
-                # Robust JSON extraction
-                json_text = raw_ai_text.strip()
-                if json_text.startswith("```"):
-                    json_text = re.sub(r'^```(?:json)?\n?|\n?```$', '', json_text, flags=re.MULTILINE)
-                
-                return json.loads(json_text)
-                
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                print(f"Gemini Rate Limit (429) on attempt {attempt + 1}. Waiting 25s...")
-                import time
-                time.sleep(25) # Wait for RPM window to clear
-                if attempt == max_retries: raise Exception("Gemini Rate Limit exceeded after 3 retries.")
-            elif e.code == 404:
-                raise Exception("Gemini Model not found (404). Check model name.")
-            else:
-                raise
-        except Exception as e:
-            print(f"Gemini Attempt {attempt + 1} failed: {str(e)}")
-            if attempt < max_retries:
-                import time
-                time.sleep(3)
-            else:
-                raise
-
-def send_knowledge_card(service_name, url, ai_data):
-    embed_fields = []
-    
-    # 🔑 Masterclass Features (Improved spacing with \n\n)
+def send_to_discord(service_name, url, ai_data):
+    fields = []
     if ai_data.get('features'):
-        features = "\n\n".join([f"✅ {f}" for f in ai_data['features'][:5]])
-        embed_fields.append({"name": "\n🛠️ Expert Feature Breakdown", "value": features[:1024], "inline": False})
+        fields.append({"name": "\n\n🛠️  The Superpowers", "value": "\n\n".join([f"✅ {f}" for f in ai_data['features'][:5]])[:1024], "inline": False})
     
-    # 💼 Practical Use Cases
     if ai_data.get('use_cases'):
-        use_cases = "\n\n".join([f"🚀 {u}" for u in ai_data['use_cases'][:4]])
-        embed_fields.append({"name": "\n🎯 Real-World Scenarios", "value": use_cases[:1024], "inline": False})
+        fields.append({"name": "\n\n🏗️  Where to use it?", "value": "\n\n".join([f"🚀 {u}" for u in ai_data['use_cases'][:4]])[:1024], "inline": False})
 
-    # 💡 DevOps Crucials
     if ai_data.get('devops_crucials'):
         crucials = ai_data['devops_crucials']
-        if isinstance(crucials, list):
-            crucials_text = "\n\n".join([f"🔸 {c}" for c in crucials])
-        else:
-            crucials_text = str(crucials)
-            
-        embed_fields.append({
-            "name": "\n⚡ DevOps Pro-Tips (The 'Must-Knows')", 
-            "value": crucials_text[:1024], 
-            "inline": False
-        })
+        text = "\n\n".join([f"🔹 {c}" for c in crucials]) if isinstance(crucials, list) else str(crucials)
+        fields.append({"name": "\n\n⚡  Mentor 'Secret' Tips", "value": text[:1024], "inline": False})
         
-    # 📊 Architectural Comparison
     if ai_data.get('comparison'):
-        embed_fields.append({"name": "\n⚖️ The Cloud Battle: AWS vs Rivals", "value": f"\n{ai_data['comparison'][:1024]}", "inline": False})
+        fields.append({"name": "\n\n⚖️  The Rival Roundup", "value": f"\n{ai_data['comparison']}"[:1024], "inline": False})
 
     payload = {
-        "username": "AWS Architect AI",
+        "username": "AWS Mentor AI",
         "avatar_url": "https://cdn-icons-png.flaticon.com/512/2855/2855011.png",
-        "embeds": [
-            {
-                "title": f"🎓 Senior Master Class: {service_name}",
-                "description": f"{ai_data.get('description')}\n\n[📖 Read Official Documentation]({url})",
-                "url": url,
-                "color": 3447003, # Nice blue for AI
-                "fields": embed_fields,
-                "footer": {"text": f"AI-Synthesized Masterclass • {datetime.utcnow().strftime('%Y-%m-%d')}"}
-            }
-        ]
+        "embeds": [{
+            "title": f"🎓 Senior Master Class: {service_name}",
+            "description": f"{ai_data.get('description', 'Exciting AWS service!')}\n\n[📖 Read The Full Manual]({url})",
+            "url": url,
+            "color": 3447003,
+            "fields": fields,
+            "footer": {"text": f"Making Cloud Simple • {datetime.utcnow().strftime('%Y-%m-%d')}"}
+        }]
     }
     
-    req = urllib.request.Request(
-        DISCORD_WEBHOOK_URL, 
-        data=json.dumps(payload).encode('utf-8'),
-        headers={
-            'Content-Type': 'application/json',
-            'User-Agent': 'AWSProfessorAI/1.0'
-        }
-    )
-    
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            print(f"Discord Response: {response.getcode()}")
-    except Exception as e:
-        print(f"Discord Webhook Error: {e}")
+    req = urllib.request.Request(DISCORD_WEBHOOK_URL, data=json.dumps(payload).encode('utf-8'),
+                                 headers={'Content-Type': 'application/json', 'User-Agent': 'AWS-Bot/1.0'})
+    with urllib.request.urlopen(req, timeout=10) as response:
+        print(f"Discord: {response.getcode()}")

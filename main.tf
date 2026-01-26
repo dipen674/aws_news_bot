@@ -9,8 +9,8 @@ variable "news_webhook_url" {
   sensitive   = true
 }
 
-variable "gemini_api_key" {
-  description = "The Google Gemini API Key for AI summarization"
+variable "groq_api_key" {
+  description = "The Groq API Key for AI summarization"
   type        = string
   sensitive   = true
 }
@@ -83,7 +83,7 @@ resource "aws_lambda_function" "news_bot" {
     variables = {
       TABLE_NAME          = aws_dynamodb_table.news_tracker.name
       DISCORD_WEBHOOK_URL = var.news_webhook_url
-      GEMINI_API_KEY      = var.gemini_api_key
+      GROQ_API_KEY        = var.groq_api_key
     }
   }
 }
@@ -131,7 +131,7 @@ resource "aws_lambda_function" "knowledge_bot" {
   environment {
     variables = {
       DISCORD_WEBHOOK_URL = var.knowledge_webhook_url
-      GEMINI_API_KEY      = var.gemini_api_key
+      GROQ_API_KEY        = var.groq_api_key
     }
   }
 }
