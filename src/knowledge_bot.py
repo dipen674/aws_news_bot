@@ -144,25 +144,25 @@ def query_gemini(service_name, content):
         raise ValueError("Gemini API Key is missing or not configured.")
 
     prompt = f"""
-    You are a Senior DevOps & Cloud Infrastructure Architect with 15 years of experience. 
-    Analyze the following AWS {service_name} documentation and provide a punchy, "eye-catchy" masterclass summary.
-    
+    You are a friendly Senior AWS Architect who loves mentoring beginners.
+    Explain AWS {service_name} in SIMPLE, everyday English. 
+    Imagine you are explaining this to a friend who knows basic IT but is new to the cloud.
+
     GUIDELINES:
-    - Use SIMPLE, NO-NONSENSE language (no corporate jargon).
-    - Summarize the intro into 3-4 short, high-impact bullet points or short paragraphs.
-    - Focus on what a DEVOPS ENGINEER actually needs to know (scaling, security, reliability, infra-as-code).
-    - Provide 3 real-world, practical use cases.
-    - For the comparison, be blunt: When is it a win? When is it a mistake?
-    
+    - Use VERY SIMPLE English. Avoid "corporate speak" or high-level jargon.
+    - Be friendly and welcoming, but keep the technical "meat."
+    - Use short sentences and punchy bullet points.
+    - For "Why it matters," give a real-life analogy (like a warehouse, a post office, etc).
+
     RESPONSE FORMAT (STRICT JSON ONLY):
     {{
-        "description": "Short, punchy 1-2 sentence overview followed by 3 bold 'Why it matters' points.",
-        "features": ["DevOps Feature 1: Why it's cool", "DevOps Feature 2: Why it's cool", "..."],
-        "devops_crucials": "The 3 most important technical 'gotchas' or settings every engineer must know about this service.",
-        "use_cases": ["Practical Scenario 1", "Practical Scenario 2", "..."],
-        "comparison": "Blunt comparison: AWS vs Azure/GCP alternatives + the 'Winner' for specific needs."
+        "description": "A very simple intro (2 sentences). Followed by 3 bold 'Why it's cool' points with emojis.",
+        "features": ["Feature name: [Super simple 1-sentence explanation]", "..."],
+        "devops_crucials": ["Pro-tip 1: [Simple advice]", "Pro-tip 2: [Simple advice]", "..."],
+        "use_cases": ["Case 1: [Simple example]", "Case 2: [Simple example]", "..."],
+        "comparison": "Friendly comparison: 'AWS [Service] is like [X], while Azure/GCP is like [Y]. Pick this one if you want [Z].'"
     }}
-    
+
     CONTENT TO ANALYZE:
     {content[:15000]}
     """
@@ -180,7 +180,7 @@ def query_gemini(service_name, content):
         ],
         "generationConfig": {
             "response_mime_type": "application/json",
-            "temperature": 0.2
+            "temperature": 0.3
         }
     }
     
@@ -198,17 +198,9 @@ def query_gemini(service_name, content):
                 result = json.loads(res_body)
                 
                 if 'candidates' not in result or not result['candidates']:
-                    # Check for safety refuse
-                    if 'promptFeedback' in result:
-                        print(f"Gemini Safety Block: {result['promptFeedback']}")
                     raise Exception("No AI candidates returned")
 
                 candidate = result['candidates'][0]
-                if 'content' not in candidate or 'parts' not in candidate['content']:
-                    # Likely blocked mid-generation
-                    print(f"Candidate blocked/empty: {candidate.get('finishReason')}")
-                    raise Exception(f"AI blocked generation: {candidate.get('finishReason')}")
-
                 raw_ai_text = candidate['content']['parts'][0]['text']
                 
                 # Robust JSON extraction
@@ -222,41 +214,40 @@ def query_gemini(service_name, content):
             print(f"Gemini Attempt {attempt + 1} failed: {str(e)}")
             if attempt < max_retries:
                 import time
-                time.sleep(2) # Backoff
+                time.sleep(2)
             else:
                 raise
 
 def send_knowledge_card(service_name, url, ai_data):
     embed_fields = []
     
-    # 🔑 Masterclass Features
+    # 🔑 Masterclass Features (Improved spacing with \n\n)
     if ai_data.get('features'):
-        features = "\n".join([f"✅ {f}" for f in ai_data['features'][:5]])
-        embed_fields.append({"name": "�️ Expert Feature Breakdown", "value": features[:1024], "inline": False})
+        features = "\n\n".join([f"✅ {f}" for f in ai_data['features'][:5]])
+        embed_fields.append({"name": "\n🛠️ Expert Feature Breakdown", "value": features[:1024], "inline": False})
     
     # 💼 Practical Use Cases
     if ai_data.get('use_cases'):
-        use_cases = "\n".join([f"🚀 {u}" for u in ai_data['use_cases'][:4]])
-        embed_fields.append({"name": "🎯 Real-World Scenarios", "value": use_cases[:1024], "inline": False})
+        use_cases = "\n\n".join([f"🚀 {u}" for u in ai_data['use_cases'][:4]])
+        embed_fields.append({"name": "\n🎯 Real-World Scenarios", "value": use_cases[:1024], "inline": False})
 
-    # 💡 DevOps Crucials (FIXED FORMATTING)
+    # 💡 DevOps Crucials
     if ai_data.get('devops_crucials'):
         crucials = ai_data['devops_crucials']
-        # If AI returned a list, format it with bullets
         if isinstance(crucials, list):
-            crucials_text = "\n".join([f"🔸 {c}" for c in crucials])
+            crucials_text = "\n\n".join([f"🔸 {c}" for c in crucials])
         else:
             crucials_text = str(crucials)
             
         embed_fields.append({
-            "name": "⚡ DevOps Pro-Tips (The 'Must-Knows')", 
+            "name": "\n⚡ DevOps Pro-Tips (The 'Must-Knows')", 
             "value": crucials_text[:1024], 
             "inline": False
         })
         
     # 📊 Architectural Comparison
     if ai_data.get('comparison'):
-        embed_fields.append({"name": "⚖️ The Cloud Battle: AWS vs Rivals", "value": ai_data['comparison'][:1024], "inline": False})
+        embed_fields.append({"name": "\n⚖️ The Cloud Battle: AWS vs Rivals", "value": f"\n{ai_data['comparison'][:1024]}", "inline": False})
 
     payload = {
         "username": "AWS Architect AI",

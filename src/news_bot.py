@@ -82,21 +82,22 @@ def clean_text(text):
     return text
 
 def query_gemini_for_news(title, content):
-    """Summarizes AWS news with a DevOps focus"""
+    """Summarizes AWS news with a friendly, simple DevOps focus"""
     if not GEMINI_API_KEY:
         return None
 
     prompt = f"""
-    You are a Senior DevOps Architect. Analyze this new AWS announcement and summarize it for a DevOps team.
-    
+    You are a friendly Senior DevOps Architect. Explain this new AWS announcement in VERY SIMPLE English. 
+    Imagine you are telling a friend about a cool new update.
+
     TITLE: {title}
     CONTENT: {content[:8000]}
     
     RESPONSE FORMAT (STRICT JSON ONLY):
     {{
-        "devops_impact": "1-2 punchy sentences on how this affects production infra or workflows.",
-        "key_takeaway": "The #1 most important technical detail or 'pro-tip' about this change.",
-        "worth_it": "A 'Yes/No/Maybe' rating plus a 5-word reason."
+        "devops_impact": "1-2 very simple sentences on how this helps us.",
+        "key_takeaway": "The #1 simple thing to remember about this.",
+        "worth_it": "Yes/No/Maybe + a very simple reason (max 5 words)."
     }}
     """
 
@@ -104,7 +105,7 @@ def query_gemini_for_news(title, content):
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
     }
     
     req = urllib.request.Request(api_url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
@@ -114,7 +115,6 @@ def query_gemini_for_news(title, content):
             result = json.loads(response.read().decode('utf-8'))
             raw_text = result['candidates'][0]['content']['parts'][0]['text']
             
-            # JSON cleaning
             json_text = raw_text.strip()
             if json_text.startswith("```"):
                 json_text = re.sub(r'^```(?:json)?\n?|\n?```$', '', json_text, flags=re.MULTILINE)
@@ -127,14 +127,14 @@ def query_gemini_for_news(title, content):
 def send_to_discord(title, full_description, ai_analysis, link):
     embed_fields = []
     
-    # 🧠 AI Insight Field
+    # 🧠 AI Insight Field (Added extra newlines for spacing)
     if ai_analysis:
-        insight_text = f"**⚙️ DevOps Impact**: {ai_analysis.get('devops_impact', 'N/A')}\n"
-        insight_text += f"**💡 Key Takeaway**: {ai_analysis.get('key_takeaway', 'N/A')}\n"
+        insight_text = f"\n**⚙️ DevOps Impact**: {ai_analysis.get('devops_impact', 'N/A')}\n\n"
+        insight_text += f"**💡 Key Takeaway**: {ai_analysis.get('key_takeaway', 'N/A')}\n\n"
         insight_text += f"**🚀 Deployment Recommendation**: {ai_analysis.get('worth_it', 'N/A')}"
         
         embed_fields.append({
-            "name": "🧠 AI Architect's Insight",
+            "name": "\n🧠 AI Architect's Insight",
             "value": insight_text[:1024],
             "inline": False
         })
