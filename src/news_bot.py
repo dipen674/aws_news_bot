@@ -69,6 +69,11 @@ def lambda_handler(event, context):
         )
         processed_count += 1
         
+        # Intentional pacing to stay under 15 RPM
+        if processed_count < 3:
+            import time
+            time.sleep(5)
+        
     return {
         'statusCode': 200,
         'body': json.dumps(f'Processed {processed_count} news articles with AI.')
@@ -87,17 +92,19 @@ def query_gemini_for_news(title, content):
         return None
 
     prompt = f"""
-    You are a friendly Senior DevOps Architect. Explain this new AWS announcement in VERY SIMPLE English. 
-    Imagine you are telling a friend about a cool new update.
+    You are a friendly Senior DevOps Architect. 
+    Explain this new AWS announcement in VERY SIMPLE, friendly English. 
+    Imagine you are chatting with a junior dev who is a bit overwhelmed.
 
     TITLE: {title}
     CONTENT: {content[:8000]}
     
     RESPONSE FORMAT (STRICT JSON ONLY):
     {{
-        "devops_impact": "1-2 very simple sentences on how this helps us.",
-        "key_takeaway": "The #1 simple thing to remember about this.",
-        "worth_it": "Yes/No/Maybe + a very simple reason (max 5 words)."
+        "friendly_summary": "A 2-3 sentence very simple and exciting explanation of what this news is.",
+        "devops_impact": "How this actually makes our lives easier as engineers.",
+        "key_takeaway": "The one technical 'pro-tip' to remember.",
+        "worth_it": "Yes/No/Maybe + a simple reason (max 5 words)."
     }}
     """
 
@@ -105,37 +112,65 @@ def query_gemini_for_news(title, content):
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.3}
+        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.4}
     }
     
-    req = urllib.request.Request(api_url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
-    
-    try:
-        with urllib.request.urlopen(req, timeout=20) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            raw_text = result['candidates'][0]['content']['parts'][0]['text']
-            
-            json_text = raw_text.strip()
-            if json_text.startswith("```"):
-                json_text = re.sub(r'^```(?:json)?\n?|\n?```$', '', json_text, flags=re.MULTILINE)
-            
-            return json.loads(json_text)
-    except Exception as e:
-        print(f"AI News Analysis Failed: {e}")
-        return None
+    max_retries = 5
+    for attempt in range(max_retries + 1):
+        try:
+            req = urllib.request.Request(api_url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                raw_text = result['candidates'][0]['content']['parts'][0]['text']
+                
+                json_text = raw_text.strip()
+                if json_text.startswith("```"):
+                    json_text = re.sub(r'^```(?:json)?\n?|\n?```$', '', json_text, flags=re.MULTILINE)
+                
+                return json.loads(json_text)
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print(f"News AI Rate Limit (429). Attempt {attempt + 1}. Waiting 15s...")
+                import time
+                time.sleep(15)
+                if attempt == max_retries: raise
+            else:
+                raise
+        except Exception as e:
+            print(f"AI News Analysis Attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries:
+                import time
+                time.sleep(3)
+            else:
+                raise
+    return None
 
 def send_to_discord(title, full_description, ai_analysis, link):
     embed_fields = []
     
-    # 🧠 AI Insight Field (Added extra newlines for spacing)
+    # Use AI summary for the main description if available
+    final_description = ""
+    if ai_analysis and ai_analysis.get('friendly_summary'):
+        final_description = ai_analysis['friendly_summary']
+    else:
+        # Fallback to truncated RSS desc only if AI fails
+        final_description = full_description[:300] + "..."
+
+    # 🧠 AI Insight Fields with improved vertical spacing
     if ai_analysis:
-        insight_text = f"\n**⚙️ DevOps Impact**: {ai_analysis.get('devops_impact', 'N/A')}\n\n"
-        insight_text += f"**💡 Key Takeaway**: {ai_analysis.get('key_takeaway', 'N/A')}\n\n"
-        insight_text += f"**🚀 Deployment Recommendation**: {ai_analysis.get('worth_it', 'N/A')}"
-        
         embed_fields.append({
-            "name": "\n🧠 AI Architect's Insight",
-            "value": insight_text[:1024],
+            "name": "\n⚙️ DevOps Impact",
+            "value": f"{ai_analysis.get('devops_impact', 'N/A')}\n\u200b",
+            "inline": False
+        })
+        embed_fields.append({
+            "name": "💡 Key Takeaway",
+            "value": f"{ai_analysis.get('key_takeaway', 'N/A')}\n\u200b",
+            "inline": False
+        })
+        embed_fields.append({
+            "name": "🚀 Deployment Recommendation",
+            "value": f"{ai_analysis.get('worth_it', 'N/A')}\n\u200b",
             "inline": False
         })
     
@@ -145,7 +180,7 @@ def send_to_discord(title, full_description, ai_analysis, link):
         "embeds": [
             {
                 "title": title[:256],
-                "description": full_description[:300] + "... [Read More]",
+                "description": f"{final_description}\n\n[📖 Read Official Documentation]({link})",
                 "url": link,
                 "color": 16753920, # AWS Orange
                 "fields": embed_fields,

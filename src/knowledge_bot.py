@@ -184,7 +184,7 @@ def query_gemini(service_name, content):
         }
     }
     
-    max_retries = 2
+    max_retries = 3
     for attempt in range(max_retries + 1):
         try:
             req = urllib.request.Request(
@@ -198,7 +198,7 @@ def query_gemini(service_name, content):
                 result = json.loads(res_body)
                 
                 if 'candidates' not in result or not result['candidates']:
-                    raise Exception("No AI candidates returned")
+                    raise Exception("AI returned no results (safety block or empty response)")
 
                 candidate = result['candidates'][0]
                 raw_ai_text = candidate['content']['parts'][0]['text']
@@ -210,11 +210,21 @@ def query_gemini(service_name, content):
                 
                 return json.loads(json_text)
                 
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print(f"Gemini Rate Limit (429) on attempt {attempt + 1}. Waiting 25s...")
+                import time
+                time.sleep(25) # Wait for RPM window to clear
+                if attempt == max_retries: raise Exception("Gemini Rate Limit exceeded after 3 retries.")
+            elif e.code == 404:
+                raise Exception("Gemini Model not found (404). Check model name.")
+            else:
+                raise
         except Exception as e:
             print(f"Gemini Attempt {attempt + 1} failed: {str(e)}")
             if attempt < max_retries:
                 import time
-                time.sleep(2)
+                time.sleep(3)
             else:
                 raise
 

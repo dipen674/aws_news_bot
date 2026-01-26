@@ -77,7 +77,7 @@ resource "aws_lambda_function" "news_bot" {
   role             = aws_iam_role.lambda_role.arn
   handler          = "news_bot.lambda_handler"
   runtime          = "python3.9"
-  timeout          = 30
+  timeout          = 90
   source_code_hash = data.archive_file.news_lambda_zip.output_base64sha256
   environment {
     variables = {
@@ -126,7 +126,7 @@ resource "aws_lambda_function" "knowledge_bot" {
   role             = aws_iam_role.lambda_role.arn # Reuse same role
   handler          = "knowledge_bot.lambda_handler"
   runtime          = "python3.9"
-  timeout          = 30
+  timeout          = 90
   source_code_hash = data.archive_file.knowledge_zip.output_base64sha256
   environment {
     variables = {
@@ -137,18 +137,7 @@ resource "aws_lambda_function" "knowledge_bot" {
 }
 
 # --- 7. Instant Trigger for Knowledge Bot (For Testing) ---
-resource "terraform_data" "trigger_knowledge" {
-  triggers_replace = [
-    timestamp()
-  ]
 
-  provisioner "local-exec" {
-    # Trigger with a random service by sending empty payload
-    command = "aws lambda invoke --function-name ${aws_lambda_function.knowledge_bot.function_name} --region us-east-1 response_knowledge.json"
-  }
-
-  depends_on = [aws_lambda_function.knowledge_bot]
-}
 
 # --- 8. EventBridge Scheduler for Knowledge (Twice Daily: 10 AM & 7 PM UTC) ---
 resource "aws_cloudwatch_event_rule" "daily_knowledge" {
@@ -170,15 +159,4 @@ resource "aws_lambda_permission" "allow_eventbridge_knowledge" {
   source_arn    = aws_cloudwatch_event_rule.daily_knowledge.arn
 }
 
-# --- 9. Instant Trigger for News Bot (For Testing) ---
-resource "terraform_data" "trigger_news" {
-  triggers_replace = [
-    timestamp()
-  ]
 
-  provisioner "local-exec" {
-    command = "aws lambda invoke --function-name ${aws_lambda_function.news_bot.function_name} --region us-east-1 response_news.json"
-  }
-
-  depends_on = [aws_lambda_function.news_bot]
-}
