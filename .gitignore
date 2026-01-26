@@ -1,0 +1,14 @@
+# Terraform & Secrets
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Build & Python
+*.zip
+__pycache__/
+*.pyc
+
+# Local debug logs & test scripts
+response*.json
+test_api*.py
