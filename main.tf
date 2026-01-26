@@ -150,10 +150,10 @@ resource "terraform_data" "trigger_knowledge" {
   depends_on = [aws_lambda_function.knowledge_bot]
 }
 
-# --- 8. EventBridge Scheduler for Knowledge (Daily at 10:00 AM UTC) ---
+# --- 8. EventBridge Scheduler for Knowledge (Twice Daily: 10 AM & 7 PM UTC) ---
 resource "aws_cloudwatch_event_rule" "daily_knowledge" {
   name                = "daily-knowledge-trigger"
-  schedule_expression = "cron(0 10 * * ? *)"
+  schedule_expression = "cron(0 10,19 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "knowledge_target" {
