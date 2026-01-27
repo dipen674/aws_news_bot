@@ -4,7 +4,7 @@ A serverless, AI-powered automation system that delivers high-quality AWS techni
 
 Built for DevOps, SREs, and Cloud Engineers who want to master AWS without drowning in documentation.
 
-![Architecture Diagram](./aws_masterclass_architecture.png)
+![Architecture Diagram](./architecture.png)
 
 ## 🚀 How it Works
 

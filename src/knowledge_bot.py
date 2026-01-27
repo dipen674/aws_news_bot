@@ -43,8 +43,32 @@ SERVICES = {
     "Braket": "https://aws.amazon.com/braket/", "Marketplace": "https://aws.amazon.com/marketplace/"
 }
 
+import boto3
+
+dynamodb = boto3.resource('dynamodb')
+TABLE_NAME = os.environ.get('TABLE_NAME', 'aws-news-tracker')
+
 def lambda_handler(event, context):
-    service = event.get('service') or random.choice(list(SERVICES.keys()))
+    table = dynamodb.Table(TABLE_NAME)
+    
+    # 1. Check if user asked for a specific service manually
+    service = event.get('service')
+    
+    if not service:
+        # 2. "Variety Shield": Try to pick a service we haven't shown recently
+        all_services = list(SERVICES.keys())
+        random.shuffle(all_services)
+        
+        service = all_services[0] # Default
+        for s in all_services:
+            # Check if this service was 'recently' posted
+            # (article_id for knowledge items starts with 'KB_')
+            dup = table.get_item(Key={'article_id': f"KB_{s}"})
+            if 'Item' not in dup:
+                service = s
+                break
+    
+    # Standardize casing
     for s in SERVICES.keys():
         if s.lower() == service.lower():
             service = s
@@ -57,30 +81,40 @@ def lambda_handler(event, context):
         print(f"Generating Catchy Masterclass for {service}...")
         ai_data = query_groq_direct(service)
         if not ai_data: raise Exception("Groq failure")
+        
         send_to_discord(service, url, ai_data)
+        
+        # 3. Mark as 'Seen' in the tracker
+        table.put_item(Item={
+            'article_id': f"KB_{service}", 
+            'processed_at': str(datetime.now()), 
+            'title': f"Knowledge: {service}"
+        })
+        
         return {'statusCode': 200, 'body': json.dumps(f"Posted {service}")}
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
         return {'statusCode': 500, 'body': json.dumps(str(e))}
 
 def query_groq_direct(service_name):
-    prompt = f"""You are a legendary Technical Bard. 
-Your goal is to tell the EPIC and FUNNY story of AWS {service_name}. 
-Make my mood refreshed, make me laugh, but teach me like a Senior Architect.
+    prompt = f"""You are a legendary Technical Bard who LOVES simplifying things.
+Tell the EPIC and FUNNY story of AWS {service_name} using VERY SIMPLE everyday English.
 
 RULES:
-- Use a storytelling format for every section.
-- Be funny, witty, and slightly dramatic.
-- DO NOT lose the technical depth. Mention internal mechanics.
-- Comparison: Name Azure [Service] and GCP [Service] as rival kingdoms/characters.
+- Use ULTRASIMPLE English (no complex words, no corporate speak).
+- 1-2 SHORT sentences max per part.
+- Prefix every list item with ONLY "1.", "2.", or "3.".
+- Be funny and slightly dramatic, like a campfire story.
+- Technical Detail: Still mention the specific service mechanics but in plain English.
+- Rival Kingdoms: Name Azure [Service] and GCP [Service] as rival characters.
 
 Respond ONLY with valid JSON (no markdown):
 {{
-  "description": "The Origin Story: A funny, high-energy tale of why this service was born and what it does. (Max 4 lines)",
-  "features": ["The Hero's Toolkit 1: [Technical feature explained as a superpower]", "Superpower 2", "Superpower 3"],
-  "devops_crucials": ["The Bard's Secret: [Funny but critical production advice]", "Secret 2", "Secret 3"],
-  "use_cases": ["The Quest 1: [Real-world scenario told as a short funny quest]", "Quest 2", "Quest 3"],
-  "comparison": "The Rivalry Saga: A witty technical battle between {service_name} and its Azure/GCP rivals. Name the services and explain why AWS wins (or doesn't)."
+  "description": "The Origin Story (Simple English version): Why this hero was born and what it does. (Max 3 lines)",
+  "features": ["1. [Simple Technical Superpower]", "2. [Simple Technical Superpower]", "3. [Simple Technical Superpower]"],
+  "devops_crucials": ["1. [Funny but critical simple advice]", "2. [Advice]", "3. [Advice]"],
+  "use_cases": ["1. [A small funny story-based example]", "2. [Example]", "3. [Example]"],
+  "comparison": "The Rivalry Saga (Simple English): A witty technical battle between {service_name} and its Azure/GCP rivals. Name the services."
 }}"""
 
     payload = {

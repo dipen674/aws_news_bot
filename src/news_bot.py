@@ -30,16 +30,16 @@ def lambda_handler(event, context):
     table = dynamodb.Table(TABLE_NAME)
     
     for item in items:
-        if processed >= 3: break
+        if processed >= 1: break
         
         title = item.find("title").text
         link = item.find("link").text
         guid = item.find("guid").text
         desc = clean_text(item.find("description").text)
         
-        # Dup check is fine to keep, but for testing you might want to skip it
-        # dup = table.get_item(Key={'article_id': guid})
-        # if 'Item' in dup: continue
+        # Dup check ensures we only post NEW stories
+        dup = table.get_item(Key={'article_id': guid})
+        if 'Item' in dup: continue
             
         print(f"Analyzing news item with Senior AI: {title}")
         ai = query_groq(title, desc)
@@ -63,19 +63,19 @@ def clean_text(text):
     return re.sub(r'\n\s*\n', '\n', text).strip()
 
 def query_groq(title, content):
-    prompt = f"""You are a witty Senior Architect / Storyteller. 
-Explain this AWS News like a refreshing, funny epic. 
-I want to laugh, but I also want EVERY technical detail (specific names, versions, domains, regions).
+    prompt = f"""You are a funny Technical Bard / Architect. 
+Tell me the EPIC story of this AWS News using VERY SIMPLE everyday English.
+I want to laugh, but I MUST know every technical detail (names, domains, version numbers).
 
 TITLE: {title}
 CONTENT: {content[:5000]}
 
 Respond ONLY with valid JSON (no markdown):
 {{
-  "friendly_summary": "The Epic Tale: A funny, informative story of what happened in this update. MUST include all technical details (like specific list of domains/numbers) mentioned in the content.",
-  "devops_impact": "The Technical Plot Twist: How this suddenly changes our engineering lives (SRE/Cost/Setup) in a witty way.",
-  "real_use_case": "The Quest: A funny, practical scenario where we use this hero tomorrow morning.",
-  "key_takeaway": "The Ancient Wisdom: The #1 architectural secret or 'gotcha' to remember."
+  "friendly_summary": "The Epic Tale (Very Simple English): A funny, happy story of what happened. List all specific names/numbers from the text.",
+  "devops_impact": "The Technical Plot Twist: How this makes our life easier tomorrow (Simple English).",
+  "real_use_case": "The Quest: A funny, practical example of using this hero at work.",
+  "key_takeaway": "The Ancient Wisdom: The #1 simple secret to remember."
 }}"""
 
     payload = {

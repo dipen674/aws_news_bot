@@ -2,7 +2,6 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# --- Variables ---
 variable "news_webhook_url" {
   description = "The Discord webhook URL for news notifications"
   type        = string
@@ -14,7 +13,7 @@ variable "groq_api_key" {
   type        = string
   sensitive   = true
 }
-# --- 1. DynamoDB for Deduplication ---
+
 resource "aws_dynamodb_table" "news_tracker" {
   name         = "aws-news-tracker"
   billing_mode = "PAY_PER_REQUEST"
@@ -24,11 +23,9 @@ resource "aws_dynamodb_table" "news_tracker" {
     type = "S"
   }
 }
-# --- 2. SNS Topic (Optional/Cleanup) ---
 resource "aws_sns_topic" "daily_briefing" {
   name = "aws-daily-briefing"
 }
-# --- 3. IAM Role & Permissions ---
 resource "aws_iam_role" "lambda_role" {
   name = "ai_curator_role"
   assume_role_policy = jsonencode({
@@ -64,7 +61,7 @@ resource "aws_iam_role_policy" "lambda_policy" {
     ]
   })
 }
-# --- 4. News Bot Lambda Function ---
+
 data "archive_file" "news_lambda_zip" {
   type        = "zip"
   source_file = "${path.module}/src/news_bot.py"
@@ -87,10 +84,12 @@ resource "aws_lambda_function" "news_bot" {
     }
   }
 }
-# --- 5. EventBridge Scheduler for News (Runs daily at 9:30 AM UTC) ---
+# --- 5. EventBridge Scheduler for News (Runs daily at 3:45 AM UTC) ---
+#This must follow the standard UTC time format so calculate the difference
+#with your local time before setting the schedule expression
 resource "aws_cloudwatch_event_rule" "daily_news_trigger" {
   name                = "daily-news-trigger"
-  schedule_expression = "cron(30 9 * * ? *)"
+  schedule_expression = "cron(45 3 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "news_target" {
@@ -132,6 +131,7 @@ resource "aws_lambda_function" "knowledge_bot" {
     variables = {
       DISCORD_WEBHOOK_URL = var.knowledge_webhook_url
       GROQ_API_KEY        = var.groq_api_key
+      TABLE_NAME          = aws_dynamodb_table.news_tracker.name
     }
   }
 }
@@ -142,7 +142,7 @@ resource "aws_lambda_function" "knowledge_bot" {
 # --- 8. EventBridge Scheduler for Knowledge (Twice Daily: 10 AM & 7 PM UTC) ---
 resource "aws_cloudwatch_event_rule" "daily_knowledge" {
   name                = "daily-knowledge-trigger"
-  schedule_expression = "cron(0 10,19 * * ? *)"
+  schedule_expression = "cron(15 4 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "knowledge_target" {
