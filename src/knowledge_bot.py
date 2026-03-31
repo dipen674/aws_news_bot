@@ -3,11 +3,29 @@ import os
 import urllib.request
 import re
 import random
+import time
 from datetime import datetime
+import boto3
 
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 AI_MODEL = "llama-3.3-70b-versatile"
+
+def safe_request(url, data=None, headers=None, method='POST', timeout=30):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            req_headers = headers or {}
+            if 'User-Agent' not in req_headers:
+                req_headers['User-Agent'] = 'AWS-Knowledge-Bot/1.0 (https://github.com/dipen674/aws_news_bot)'
+            req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return response.read().decode('utf-8')
+        except Exception as e:
+            wait = (2 ** attempt) + random.uniform(0, 1)
+            print(f"Request failed (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait:.2f}s...")
+            if attempt == max_retries - 1: raise
+            time.sleep(wait)
 
 # Massive AWS Services List
 SERVICES = {
@@ -25,50 +43,39 @@ SERVICES = {
     "OpenSearch": "https://aws.amazon.com/opensearch-service/", "EMR": "https://aws.amazon.com/emr/",
     # AI & ML
     "SageMaker": "https://aws.amazon.com/sagemaker/", "Bedrock": "https://aws.amazon.com/bedrock/",
-    # Integration & Messaging
-    "SQS": "https://aws.amazon.com/sqs/", "SNS": "https://aws.amazon.com/sns/",
-    "EventBridge": "https://aws.amazon.com/eventbridge/", "Step Functions": "https://aws.amazon.com/step-functions/",
-    # Networking & Content Delivery
-    "CloudFront": "https://aws.amazon.com/cloudfront/", "API Gateway": "https://aws.amazon.com/api-gateway/",
-    "App Mesh": "https://aws.amazon.com/app-mesh/", "Global Accelerator": "https://aws.amazon.com/global-accelerator/",
-    # Security
+    "Forecast": "https://aws.amazon.com/forecast/", "Personalize": "https://aws.amazon.com/personalize/",
+    "Kendra": "https://aws.amazon.com/kendra/", "Rekognition": "https://aws.amazon.com/rekognition/",
+    # Specialized & Niche
+    "Ground Station": "https://aws.amazon.com/ground-station/", "Braket": "https://aws.amazon.com/braket/",
+    "Nimble Studio": "https://aws.amazon.com/nimble-studio/", "RoboMaker": "https://aws.amazon.com/robomaker/",
+    "AppStream 2.0": "https://aws.amazon.com/appstream2/", "WorkSpaces": "https://aws.amazon.com/workspaces/",
+    "Mainframe Modernization": "https://aws.amazon.com/mainframe-modernization/",
+    # Security & Resilience
     "WAF": "https://aws.amazon.com/waf/", "KMS": "https://aws.amazon.com/kms/",
-    "Secrets Manager": "https://aws.amazon.com/secrets-manager/", "Security Hub": "https://aws.amazon.com/security-hub/",
-    "Macie": "https://aws.amazon.com/macie/", "Inspector": "https://aws.amazon.com/inspector/",
-    # Developer Tools
-    "CloudFormation": "https://aws.amazon.com/cloudformation/", "CloudWatch": "https://aws.amazon.com/cloudwatch/",
-    "CloudShell": "https://aws.amazon.com/cloudshell/", "Proton": "https://aws.amazon.com/proton/",
-    # Specialized
-    "Connect": "https://aws.amazon.com/connect/", "Chime": "https://aws.amazon.com/chime/",
-    "Braket": "https://aws.amazon.com/braket/", "Marketplace": "https://aws.amazon.com/marketplace/"
+    "Shield": "https://aws.amazon.com/shield/", "FIS": "https://aws.amazon.com/fault-injection-service/",
+    # Integration & Management
+    "SQS": "https://aws.amazon.com/sqs/", "SNS": "https://aws.amazon.com/sns/",
+    "EventBridge": "https://aws.amazon.com/eventbridge/", "AppConfig": "https://aws.amazon.com/systems-manager/features/appconfig/",
+    "CloudFormation": "https://aws.amazon.com/cloudformation/", "CloudWatch": "https://aws.amazon.com/cloudwatch/"
 }
-
-import boto3
 
 dynamodb = boto3.resource('dynamodb')
 TABLE_NAME = os.environ.get('TABLE_NAME', 'aws-news-tracker')
 
 def lambda_handler(event, context):
     table = dynamodb.Table(TABLE_NAME)
-    
-    # 1. Check if user asked for a specific service manually
     service = event.get('service')
     
     if not service:
-        # 2. "Variety Shield": Try to pick a service we haven't shown recently
         all_services = list(SERVICES.keys())
         random.shuffle(all_services)
-        
-        service = all_services[0] # Default
+        service = all_services[0]
         for s in all_services:
-            # Check if this service was 'recently' posted
-            # (article_id for knowledge items starts with 'KB_')
             dup = table.get_item(Key={'article_id': f"KB_{s}"})
             if 'Item' not in dup:
                 service = s
                 break
     
-    # Standardize casing
     for s in SERVICES.keys():
         if s.lower() == service.lower():
             service = s
@@ -78,17 +85,18 @@ def lambda_handler(event, context):
     if not url: return {'statusCode': 404, 'body': json.dumps("Service not found")}
 
     try:
-        print(f"Generating Catchy Masterclass for {service}...")
-        ai_data = query_groq_direct(service)
+        print(f"Generating Precise Masterclass for {service}...")
+        is_repeat = table.get_item(Key={'article_id': f"KB_{service}"}).get('Item') is not None
+        ai_data = query_groq_direct(service, is_repeat)
         if not ai_data: raise Exception("Groq failure")
         
         send_to_discord(service, url, ai_data)
         
-        # 3. Mark as 'Seen' in the tracker
         table.put_item(Item={
             'article_id': f"KB_{service}", 
             'processed_at': str(datetime.now()), 
-            'title': f"Knowledge: {service}"
+            'title': f"Knowledge: {service}",
+            'repeat_count': (table.get_item(Key={'article_id': f"KB_{service}"}).get('Item', {}).get('repeat_count', 0) + 1) if is_repeat else 1
         })
         
         return {'statusCode': 200, 'body': json.dumps(f"Posted {service}")}
@@ -96,49 +104,44 @@ def lambda_handler(event, context):
         print(f"CRITICAL ERROR: {e}")
         return {'statusCode': 500, 'body': json.dumps(str(e))}
 
-def query_groq_direct(service_name):
-    prompt = f"""You are a legendary Technical Bard who LOVES simplifying things.
-Tell the EPIC and FUNNY story of AWS {service_name} using VERY SIMPLE everyday English.
+def query_groq_direct(service_name, is_repeat=False):
+    extra_instruction = "This is a repeated topic, so focus on a specific advanced architectural pattern or edge case." if is_repeat else ""
+    prompt = f"""You are an Enterprise AWS Solutions Architect. Explain AWS {service_name} in a highly professional, technically precise manner for senior engineers. {extra_instruction}
 
-RULES:
-- Use ULTRASIMPLE English (no complex words, no corporate speak).
-- 1-2 SHORT sentences max per part.
-- Prefix every list item with ONLY "1.", "2.", or "3.".
-- Be funny and slightly dramatic, like a campfire story.
-- Technical Detail: Still mention the specific service mechanics but in plain English.
-- Rival Kingdoms: Name Azure [Service] and GCP [Service] as rival characters.
+STRICT CONSTRAINTS:
+- ABSOLUTELY NO analogies, metaphors, or playful language (e.g., do NOT say "it's like a map" or "it's a hero").
+- Use strict networking, system design, and cloud engineering terminology.
+- Max 2 lines for the description.
+- 3 short, highly technical bullet points for features.
+- 1 'Architect's Secret' (a high-value, obscure technical tip or pitfall).
 
 Respond ONLY with valid JSON (no markdown):
 {{
-  "description": "The Origin Story (Simple English version): Why this hero was born and what it does. (Max 3 lines)",
-  "features": ["1. [Simple Technical Superpower]", "2. [Simple Technical Superpower]", "3. [Simple Technical Superpower]"],
-  "devops_crucials": ["1. [Funny but critical simple advice]", "2. [Advice]", "3. [Advice]"],
-  "use_cases": ["1. [A small funny story-based example]", "2. [Example]", "3. [Example]"],
-  "comparison": "The Rivalry Saga (Simple English): A witty technical battle between {service_name} and its Azure/GCP rivals. Name the services."
+  "description": "Core technical function of the service (Max 150 chars).",
+  "features": ["Technical capability 1", "Technical capability 2", "Technical capability 3"],
+  "architect_secret": "A highly technical, real-world limitation or pattern.",
+  "comparison": "1-sentence strict technical contrast with Azure/GCP equivalent."
 }}"""
 
     payload = {
         "model": AI_MODEL,
         "messages": [
-            {"role": "system", "content": "You are a fun mentor who simplifies cloud. ONLY JSON."},
+            {"role": "system", "content": "You are an Enterprise Cloud Architect. Respond ONLY in valid JSON with a strictly technical, professional tone. DO NOT use layman analogies."},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.3,
-        "max_tokens": 1000
+        "temperature": 0.2, "max_tokens": 600
     }
     
     try:
-        req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions",
-            data=json.dumps(payload).encode('utf-8'),
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json", "User-Agent": "AWS-Architect-Bot/1.0"}
-        )
-        with urllib.request.urlopen(req, timeout=40) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            raw = result['choices'][0]['message']['content'].strip()
-            if '```' in raw:
-                match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw, re.DOTALL)
-                if match: raw = match.group(1)
-            return json.loads(raw)
+        raw = safe_request("https://api.groq.com/openai/v1/chat/completions",
+                          data=json.dumps(payload).encode('utf-8'),
+                          headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json", "User-Agent": "AWS-Architect-Bot/1.0"})
+        result = json.loads(raw)
+        content = result['choices'][0]['message']['content'].strip()
+        if '```' in content:
+            match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            if match: content = match.group(1)
+        return json.loads(content)
     except Exception as e:
         print(f"Groq API Error: {e}")
         return None
@@ -146,33 +149,29 @@ Respond ONLY with valid JSON (no markdown):
 def send_to_discord(service_name, url, ai_data):
     fields = []
     if ai_data.get('features'):
-        fields.append({"name": "\n\n🛠️  The Superpowers", "value": "\n\n".join([f"✅ {f}" for f in ai_data['features'][:5]])[:1024], "inline": False})
-    
-    if ai_data.get('use_cases'):
-        fields.append({"name": "\n\n🏗️  Where to use it?", "value": "\n\n".join([f"🚀 {u}" for u in ai_data['use_cases'][:4]])[:1024], "inline": False})
+        feature_text = "\n".join([f"• {f}" for f in ai_data['features'][:3]])
+        if feature_text.strip():
+            fields.append({"name": "🛠️ Key Features", "value": feature_text[:1024], "inline": True})
+    if ai_data.get('architect_secret') and str(ai_data['architect_secret']).strip():
+        fields.append({"name": "💡 Architect's Secret", "value": str(ai_data['architect_secret'])[:1024], "inline": False})
+    if ai_data.get('comparison') and str(ai_data['comparison']).strip():
+        fields.append({"name": "⚖️ Cloud Rivalry", "value": str(ai_data['comparison'])[:1024], "inline": False})
 
-    if ai_data.get('devops_crucials'):
-        crucials = ai_data['devops_crucials']
-        text = "\n\n".join([f"🔹 {c}" for c in crucials]) if isinstance(crucials, list) else str(crucials)
-        fields.append({"name": "\n\n⚡  Mentor 'Secret' Tips", "value": text[:1024], "inline": False})
-        
-    if ai_data.get('comparison'):
-        fields.append({"name": "\n\n⚖️  The Rival Roundup", "value": f"\n{ai_data['comparison']}"[:1024], "inline": False})
+    description = (ai_data.get('description') or 'Exciting AWS service!')[:2048]
 
     payload = {
-        "username": "AWS Mentor AI",
+        "username": "AWS Architecture Guide",
         "avatar_url": "https://cdn-icons-png.flaticon.com/512/2855/2855011.png",
         "embeds": [{
-            "title": f"🎓 Senior Master Class: {service_name}",
-            "description": f"{ai_data.get('description', 'Exciting AWS service!')}\n\n[📖 Read The Full Manual]({url})",
-            "url": url,
-            "color": 3447003,
-            "fields": fields,
-            "footer": {"text": f"Making Cloud Simple • {datetime.utcnow().strftime('%Y-%m-%d')}"}
+            "title": f"📐 Enterprise Architecture: {service_name}",
+            "description": f"{description}\n\n[📖 Official Documentation]({url})",
+            "url": url, "color": 3447003, "fields": fields,
+            "footer": {"text": "Senior Technical Reference • AWS Ecosystem"}
         }]
     }
-    
-    req = urllib.request.Request(DISCORD_WEBHOOK_URL, data=json.dumps(payload).encode('utf-8'),
-                                 headers={'Content-Type': 'application/json', 'User-Agent': 'AWS-Bot/1.0'})
-    with urllib.request.urlopen(req, timeout=10) as response:
-        print(f"Discord: {response.getcode()}")
+    try:
+        safe_request(DISCORD_WEBHOOK_URL, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+        print(f"Discord post SUCCESS: {service_name}")
+    except Exception as e:
+        print(f"Discord send FAILED for '{service_name}': {e}")
+        raise

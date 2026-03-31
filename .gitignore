@@ -12,3 +12,4 @@ __pycache__/
 # Local debug logs & test scripts
 response*.json
 test_api*.py
+debug*.log

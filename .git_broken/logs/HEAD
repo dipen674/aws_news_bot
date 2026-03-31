@@ -1,0 +1,8 @@
+0000000000000000000000000000000000000000 e22ea4bf9a24952920c48af0db957176a215c620 Dipendra <bhattadeependra05@gmail.com> 1769418346 +0545	commit (initial): Initial code for my aws
+e22ea4bf9a24952920c48af0db957176a215c620 0d43715060ca312c1b7bf3833cefb984268deb99 Dipendra <bhattadeependra05@gmail.com> 1769421704 +0545	commit: feat: finalize bot with twice-daily schedule and master roadmap
+0d43715060ca312c1b7bf3833cefb984268deb99 ca6ce18cd004cebd399ee4115cab825cacbd5535 Dipendra <bhattadeependra05@gmail.com> 1769424333 +0545	commit: style: simplify language and improve discord card spacing
+ca6ce18cd004cebd399ee4115cab825cacbd5535 1329735b88de76cb5afc43c970e7b123bd26cb50 Dipendra <bhattadeependra05@gmail.com> 1769425843 +0545	commit: chore: remove manual triggers and improve backoff resilience
+1329735b88de76cb5afc43c970e7b123bd26cb50 46f7b7a197e8e3cd7d0a204d39b5cd28c1b7c2af Dipendra <bhattadeependra05@gmail.com> 1769440632 +0545	commit: Fixed the code upto the story telling master version
+46f7b7a197e8e3cd7d0a204d39b5cd28c1b7c2af 0b6b60fe130d1f0770af1a2e8b1a1d8b881f9165 Dipendra <bhattadeependra05@gmail.com> 1769489456 +0545	commit: Modified time zone
+0b6b60fe130d1f0770af1a2e8b1a1d8b881f9165 0b6b60fe130d1f0770af1a2e8b1a1d8b881f9165 dipen674 <bhattadeependra05@gmail.com> 1774937069 +0545	reset: moving to HEAD
+0b6b60fe130d1f0770af1a2e8b1a1d8b881f9165 727d4a97e63b11505f7d4111d052b49a3119ee24 dipen674 <bhattadeependra05@gmail.com> 1774937086 +0545	commit: Finalized new changes and redeployed the infra

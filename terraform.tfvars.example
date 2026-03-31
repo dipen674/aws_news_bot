@@ -1,0 +1,3 @@
+news_webhook_url      = "https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE"
+groq_api_key          = "gsk_your_groq_api_key"
+knowledge_webhook_url = "https://discord.com/api/webhooks/YOUR_KNOWLEDGE_WEBHOOK_HERE"
