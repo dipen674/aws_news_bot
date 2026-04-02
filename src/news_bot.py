@@ -51,7 +51,7 @@ def lambda_handler(event, context):
     table = dynamodb.Table(TABLE_NAME)
     
     for item in items:
-        if processed >= 5: break
+        if processed >= 1: break
         
         title = item.find("title").text
         # RSS <link> can be tricky in ElementTree — get tail or use guid as fallback
